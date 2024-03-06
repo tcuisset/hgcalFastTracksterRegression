@@ -1,15 +1,17 @@
 name: ticlRegression-gpu
 channels:
- - conda-forge
  - pytorch
  - nvidia
+ - conda-forge
  - nodefaults
 dependencies:
  - python>=3.10
  - ipykernel
+ - notebook
  - numpy
  - scipy
  - uproot=5.*
+ - fsspec-xrootd
  - awkward=2.*
  - hist
  - tqdm
@@ -18,6 +20,6 @@ dependencies:
  - matplotlib>=3
  - mplhep>=0.3 # plotting CMS style
 
- - pytorch
+ - pytorch::pytorch
  - pytorch-cuda=12.1
  - pyg::pytorch-scatter
