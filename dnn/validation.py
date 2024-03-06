@@ -1,8 +1,10 @@
 import torch
 from torch import nn
 from torch.utils.data import StackDataset
+from torch_scatter import scatter_add
 import hist
 import awkward as ak
+import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as hep
 plt.style.use(hep.style.CMS)
@@ -11,7 +13,8 @@ import pickle
 
 from dnn.torch_dataset import makeSelectedInputSample, makeDataLoader
 from dnn.ak_sample_loader import AkSampleLoader
-from torch_scatter import scatter_add
+from dnn.fit import fitCruijff, cruijff
+
 
 def createHists():
     max_E, max_E_tot = 100, 800
@@ -71,12 +74,22 @@ def plotFullEnergies(hists):
     plt.xlabel("Energy in endcap (GeV)")
     plt.legend()
 
+
+
 def plotRatioOverCP(hists):
     plt.figure()
     hep.histplot([hists["h_reco_tot_over_cp"], hists["h_pred_tot_over_cp"]], yerr=False, label=["Sum of raw trackster energy", "Sum of predicted trackster energy"])
-    # param_optimised,__name__ = fitCruijff(h_seedOverCP_energy)
-    # x_plotFct = np.linspace(h_seedOverCP_energy.axes[0].centers[0], h_seedOverCP_energy.axes[0].centers[-1],500)
-    # plt.plot(x_plotFct,cruijff(x_plotFct,*param_optimised), label=f"Cruijff fit\n$\sigma={(param_optimised[2]+param_optimised[3])/2:.3f}$")
+    
+    def plotFit(h:hist.Hist):
+        fitRes = fitCruijff(h)
+        params = fitRes.params
+        x_plotFct = np.linspace(h.axes[0].centers[0], h.axes[0].centers[-1],500)
+        plt.plot(x_plotFct,cruijff(x_plotFct,*params.makeTuple()), 
+            label=f"Cruijff fit\n$\sigma={(params.sigmaL+params.sigmaR)/2:.3f}$, $\mu={params.m:.3f}$, " +r"$\frac{\sigma}{\mu}=" + f"{(params.sigmaL+params.sigmaR)/(2*params.m):.3f}$")
+
+    plotFit(hists["h_reco_tot_over_cp"])
+    plotFit(hists["h_pred_tot_over_cp"])
+
     plt.ylabel("Events")
     plt.xlabel("Ratio over CaloParticle energy")
     plt.legend()

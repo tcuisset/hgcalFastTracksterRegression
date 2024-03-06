@@ -19,6 +19,11 @@ def splitEndcaps(ar:ak.Array):
     return ak.concatenate([ar[ar.barycenter_eta < 0], ar[ar.barycenter_eta > 0]])
 
 
+class FEATURES_INDICES:
+    """ Indices of features in the tensor """
+    RAW_ENERGY = 0
+
+
 class AkSampleLoader:
     def __init__(self, pathToHisto:str|list[str], shouldSplitEndcaps=False, cp_min_energy=1, tsArgs=dict(filter_name=["raw_energy", "raw_energy_perCellType", "barycenter_*"]), cpArgs=dict(filter_name=["regressed_energy", "barycenter_*"])) -> None:
         """ pathToHisto : either single path, single path with wildcard, list of paths 
@@ -70,7 +75,9 @@ class AkSampleLoader:
             pickle.dump(self, handle)
     
     def makeDataAk(self):
-        """ Makes an array of the features for training, output in shape nevts * ntracksters * nfeatures * float """
+        """ Makes an array of the features for training, output in shape nevts * ntracksters * nfeatures * float 
+        Respects FEATURES_INDICES
+        """
         return ak.concatenate([ak.unflatten(ar, counts=1, axis=-1) for ar in [self.tracksters_splitEndcaps.raw_energy, self.tracksters_splitEndcaps.barycenter_eta, self.tracksters_splitEndcaps.barycenter_z] + [self.energyPerCellType[:, :, cellType_i] for cellType_i in range(7)]], axis=-1)
 
     def makeTracksterInEventIndex(self):

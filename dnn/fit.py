@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from scipy.optimize import curve_fit
 import numpy as np
 import hist
-import pandas as pd
 
 @dataclass
 class CruijffParam:
@@ -63,19 +62,6 @@ def make_scOrTsOverCP_energy_histogram(name, label=None):
     h = hist.Hist(eratio_axis(label=label),
                   eta_axis, seedPt_axis, name=name, label=label)
     return h
-
-def fill_scOverCP_energy_histogram(h:hist.Hist, df:pd.DataFrame):
-    """ df should be CPtoSC_df ie CaloParticle to Supercluster """
-    h.fill(e_ratio=df.regressed_energy_supercls_sum/df.regressed_energy_CP,
-        absSeedEta=np.abs(df.barycenter_eta_seed),
-        seedPt=df.raw_pt_seed)
-
-def fill_seedTsOverCP_energy_histogram(h:hist.Hist, df:pd.DataFrame):
-    """ df should be CPtoTs_df ie CaloParticle to seed trackster (highest pt trackster for each endcap) """
-    h.fill(e_ratio=df.regressed_energy/df.regressed_energy_CP,
-        absSeedEta=np.abs(df.barycenter_eta),
-        seedPt=df.raw_pt)
-
 
 
 def fitMultiHistogram(h:hist.Hist) -> list[list[CruijffFitResult]]:
