@@ -23,12 +23,18 @@ def makeSelectedInputSample(input:AkSampleLoader, start:int|None=None, end:int|N
     doSlice = (lambda x:x[start:end]) if (start is not None and end is not None) else (lambda x:x)
     return SelectedInputSample(doSlice(input.makeDataAk()), doSlice(input.makeTracksterInEventIndex()), doSlice(input.caloparticles_splitEndcaps.regressed_energy))
 
+TEST_SIZE = 10000
 def makeTrainingSample(input:AkSampleLoader):
-    TEST_SIZE = 1000
     TRAIN_SIZE = len(input.tracksters_splitEndcaps) - TEST_SIZE
     return makeSelectedInputSample(input, 0, TRAIN_SIZE)
 
+def makeValidationSample(input:AkSampleLoader):
+    TRAIN_SIZE = len(input.tracksters_splitEndcaps) - TEST_SIZE
+    return makeSelectedInputSample(input, TRAIN_SIZE+1, len(input.tracksters_splitEndcaps))
 
+def makeValidationAkSampleLoader(input:AkSampleLoader) -> AkSampleLoader:
+    TRAIN_SIZE = len(input.tracksters_splitEndcaps) - TEST_SIZE
+    return input.cloneAndSlice(TRAIN_SIZE+1, len(input.tracksters_splitEndcaps))
 
 class FeaturesDataset(Dataset):
     def __init__(self, input:SelectedInputSample) -> None:

@@ -11,7 +11,7 @@ plt.style.use(hep.style.CMS)
 from pathlib import Path
 import pickle
 
-from dnn.torch_dataset import makeSelectedInputSample, makeDataLoader
+from dnn.torch_dataset import makeDataLoader, makeValidationSample, makeValidationAkSampleLoader
 from dnn.ak_sample_loader import AkSampleLoader
 from dnn.fit import fitCruijff, cruijff
 
@@ -36,9 +36,10 @@ def inferenceOnSavedModel(model_path:str, model:nn.Module, input:AkSampleLoader)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    pred_loader = makeDataLoader(makeSelectedInputSample(input), batch_size=200000)
+    pred_loader = makeDataLoader(makeValidationSample(input), batch_size=200000)
     assert len(pred_loader) == 1, "Batched prediction is not yet supported"
-    # model.to(pred_batch.device)
+    input = makeValidationAkSampleLoader(input) # gte a matching ak input samples to get raw trackster energy
+    model.to("cpu")
 
     hists = createHists()
 

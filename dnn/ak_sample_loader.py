@@ -1,7 +1,7 @@
 import uproot
 import awkward as ak
 import numpy as np
-
+import copy
 
 
 
@@ -23,6 +23,41 @@ class FEATURES_INDICES:
     """ Indices of features in the tensor """
     RAW_ENERGY = 0
 
+# enum :   enum CellType {
+#     CE_E_120 = 0,
+#     CE_E_200 = 1,
+#     CE_E_300 = 2,
+#     CE_H_120 = 3,
+#     CE_H_200 = 4,
+#     CE_H_300 = 5,
+#     CE_H_SCINT = 6,
+#     EnumSize = 7
+#   };
+
+
+features = {
+    "feat-v1" : {
+        0 : "raw_energy",
+        1 : "barycenter_eta",
+        2 : "barycenter_z",
+        3 : "energy_CE_E_120",
+        4 : "energy_CE_E_200",
+        5 : "energy_CE_E_300",
+        6 : "energy_CE_H_120",
+        7 : "energy_CE_H_200",
+        8 : "energy_CE_H_300",
+        9 : "energy_CE_H_SCINT"
+    },
+    "feat-v1-cellTypeOnly" : {
+        0 : "energy_CE_E_120",
+        1 : "energy_CE_E_200",
+        2 : "energy_CE_E_300",
+        3 : "energy_CE_H_120",
+        4 : "energy_CE_H_200",
+        5 : "energy_CE_H_300",
+        6 : "energy_CE_H_SCINT"
+    }
+}
 
 class AkSampleLoader:
     def __init__(self, pathToHisto:str|list[str], shouldSplitEndcaps=False, cp_min_energy=1, tsArgs=dict(filter_name=["raw_energy", "raw_energy_perCellType", "barycenter_*"]), cpArgs=dict(filter_name=["regressed_energy", "barycenter_*"])) -> None:
@@ -34,12 +69,12 @@ class AkSampleLoader:
         self.cp_min_energy = cp_min_energy
         if isinstance(pathToHisto, str) and "*" not in pathToHisto:
             dumper_tree = uproot.open(f"{pathToHisto}:ticlDumper")
-            self.tracksters = dumper_tree["trackstersMerged"].arrays(**tsArgs)
+            self.tracksters = dumper_tree["tracksters"].arrays(**tsArgs)
             self.caloparticles = dumper_tree["simtrackstersCP"].arrays(**cpArgs)
         else:
             if isinstance(pathToHisto, str):
                 pathToHisto = [pathToHisto]
-            self.tracksters = uproot.concatenate([f"{fileName}:ticlDumper/trackstersMerged" for fileName in pathToHisto], **tsArgs, num_workers=5)
+            self.tracksters = uproot.concatenate([f"{fileName}:ticlDumper/tracksters" for fileName in pathToHisto], **tsArgs, num_workers=5)
             self.caloparticles = uproot.concatenate([f"{fileName}:ticlDumper/simtrackstersCP" for fileName in pathToHisto], **cpArgs, num_workers=5)
         
         self._filterBadEvents()
@@ -73,6 +108,15 @@ class AkSampleLoader:
         import pickle
         with open(path, 'wb') as handle:
             pickle.dump(self, handle)
+    
+    def cloneAndSlice(self, start, end) -> "AkSampleLoader":
+        """ Return a copy of self sliced according to start and end (over endcaps). Meant to match pytorch dataset splitting between train and validation """
+        new = copy.copy(self)
+        new.tracksters_splitEndcaps = self.tracksters_splitEndcaps[start:end]
+        del new.tracksters
+        new.caloparticles_splitEndcaps = self.caloparticles_splitEndcaps[start:end]
+        del new.caloparticles
+        return new
     
     def makeDataAk(self):
         """ Makes an array of the features for training, output in shape nevts * ntracksters * nfeatures * float 
