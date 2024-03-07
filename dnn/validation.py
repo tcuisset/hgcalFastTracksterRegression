@@ -14,7 +14,7 @@ import pickle
 from dnn.torch_dataset import makeDataLoader, makeValidationSample, makeValidationAkSampleLoader
 from dnn.ak_sample_loader import AkSampleLoader
 from dnn.fit import fitCruijff, cruijff
-
+from dnn.model import getResultsFromModel_basicLoss
 
 def createHists():
     max_E, max_E_tot = 100, 800
@@ -31,12 +31,15 @@ def createHists():
         h_pred_tot_over_cp = hist.Hist(hist.axis.Regular(bins, 0., max_ratio, name="pred_tot_over_cp", label="Total trackster predicted energy / CaloParticle energy"))
     )
 
-def inferenceOnSavedModel(model_path:str, model:nn.Module, input:AkSampleLoader):
+def inferenceOnSavedModel(model_path:str, model:nn.Module, input:AkSampleLoader, feature_version="feat-v1", getResultsFromModel=getResultsFromModel_basicLoss):
+    """ Run inference on a given model, reloading state from path.len
+    getResultsFromModel : function that from the output tensor of a model, returns the energy prediction
+    """
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    pred_loader = makeDataLoader(makeValidationSample(input), batch_size=200000)
+    pred_loader = makeDataLoader(makeValidationSample(input, feature_version), batch_size=200000)
     assert len(pred_loader) == 1, "Batched prediction is not yet supported"
     input = makeValidationAkSampleLoader(input) # gte a matching ak input samples to get raw trackster energy
     model.to("cpu")
@@ -44,18 +47,15 @@ def inferenceOnSavedModel(model_path:str, model:nn.Module, input:AkSampleLoader)
     hists = createHists()
 
     for pred_batch in pred_loader:
-        model_output_tensor = model(pred_batch["features"]).detach()
-        model_output = model_output_tensor.numpy()
-
-        full_energy_pred = scatter_add(model_output_tensor, pred_batch["tracksterInEvent_idx"].detach()).numpy()
+        pred_trackster_energies, pred_full_energy = getResultsFromModel(model, pred_batch)
     
-        hists["h_pred"].fill(model_output)
+        hists["h_pred"].fill(pred_trackster_energies)
         hists["h_reco"].fill(ak.flatten(input.tracksters_splitEndcaps.raw_energy))
         hists["h_reco_tot"].fill(ak.sum(input.tracksters_splitEndcaps.raw_energy, axis=-1))
-        hists["h_pred_tot"].fill(full_energy_pred)
+        hists["h_pred_tot"].fill(pred_full_energy)
         hists["h_cp"].fill(pred_batch["cp_energy"])
         hists["h_reco_tot_over_cp"].fill(ak.sum(input.tracksters_splitEndcaps.raw_energy, axis=-1) / pred_batch["cp_energy"])
-        hists["h_pred_tot_over_cp"].fill(full_energy_pred / pred_batch["cp_energy"])
+        hists["h_pred_tot_over_cp"].fill(pred_full_energy / pred_batch["cp_energy"])
     
     return hists
 
@@ -98,8 +98,8 @@ def plotRatioOverCP(hists):
 
 plotsToSave = [plotTracksterEnergies, plotFullEnergies, plotRatioOverCP]
 
-def doFullValidation(model_path:str, model:nn.Module, input:AkSampleLoader):
-    hists = inferenceOnSavedModel(model_path, model, input)
+def doFullValidation(model_path:str, model:nn.Module, input:AkSampleLoader, feature_version="feat-v1", getResultsFromModel=getResultsFromModel_basicLoss):
+    hists = inferenceOnSavedModel(model_path, model, input, feature_version, getResultsFromModel=getResultsFromModel)
     with open(Path(model_path).with_suffix(".hists.pkl"), "wb") as f:
         pickle.dump(hists, f)
     

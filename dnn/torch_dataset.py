@@ -19,18 +19,18 @@ class SelectedInputSample:
         """ Make a Pytorch dataset from this batch, converting ak -> pytorch tensor """
         return StackDataset(features=FeaturesDataset(self), tracksterInEvent_idx=TracksterInEventIdxDataset(self), cp_energy=TensorDataset(torch.tensor(self.cp_energy, dtype=dtype)))
 
-def makeSelectedInputSample(input:AkSampleLoader, start:int|None=None, end:int|None=None):
+def makeSelectedInputSample(input:AkSampleLoader, featureVersion:str="feat-v1", start:int|None=None, end:int|None=None):
     doSlice = (lambda x:x[start:end]) if (start is not None and end is not None) else (lambda x:x)
-    return SelectedInputSample(doSlice(input.makeDataAk()), doSlice(input.makeTracksterInEventIndex()), doSlice(input.caloparticles_splitEndcaps.regressed_energy))
+    return SelectedInputSample(doSlice(input.makeDataAk(featureVersion)), doSlice(input.makeTracksterInEventIndex()), doSlice(input.caloparticles_splitEndcaps.regressed_energy))
 
 TEST_SIZE = 10000
-def makeTrainingSample(input:AkSampleLoader):
+def makeTrainingSample(input:AkSampleLoader, featureVersion:str="feat-v1"):
     TRAIN_SIZE = len(input.tracksters_splitEndcaps) - TEST_SIZE
-    return makeSelectedInputSample(input, 0, TRAIN_SIZE)
+    return makeSelectedInputSample(input, featureVersion, 0, TRAIN_SIZE)
 
-def makeValidationSample(input:AkSampleLoader):
+def makeValidationSample(input:AkSampleLoader, featureVersion:str="feat-v1"):
     TRAIN_SIZE = len(input.tracksters_splitEndcaps) - TEST_SIZE
-    return makeSelectedInputSample(input, TRAIN_SIZE+1, len(input.tracksters_splitEndcaps))
+    return makeSelectedInputSample(input, featureVersion, TRAIN_SIZE+1, len(input.tracksters_splitEndcaps))
 
 def makeValidationAkSampleLoader(input:AkSampleLoader) -> AkSampleLoader:
     TRAIN_SIZE = len(input.tracksters_splitEndcaps) - TEST_SIZE
