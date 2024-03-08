@@ -92,6 +92,11 @@ def loss_mse_basic(model, data_batch):
     """ MSE of sumPredictions - CPenergy"""
     return nn.functional.mse_loss(endcap_sum_predictions(model, data_batch), data_batch["cp_energy"])
 
+def loss_mse_basic_ratio(model, data_batch):
+    """ MSE of sumPredictions/CPenergy - 1"""
+    return nn.functional.mse_loss(endcap_sum_predictions(model, data_batch)/data_batch["cp_energy"], torch.ones_like(data_batch["cp_energy"]))
+
+
 def getResultsFromModel_basicLoss(model:nn.Module, pred_batch:dict[str, torch.Tensor]) -> tuple[np.ndarray, np.ndarray]:
     """ Computes for the given model the energy prediction for each trackster as well as the sum of the energy predictions for the complete endcap """
     model_output_tensor = model(pred_batch["features"]).detach()

@@ -4,11 +4,12 @@ from torch import nn
 from tqdm.auto import tqdm
 
 class Trainer:
-    def __init__(self, model:nn.Module, loss_fn, dataloader:DataLoader, optimizer, device="cpu") -> None:
+    def __init__(self, model:nn.Module, loss_fn, dataloader:DataLoader, optimizer, scheduler=None, device="cpu") -> None:
         self.model = model
         self.loss_fn = loss_fn
         self.dataloader = dataloader
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.device = device
 
         self.losses_per_epoch = []
@@ -26,12 +27,14 @@ class Trainer:
             self.optimizer.zero_grad()
 
             if batch % 10 == 0:
-                print(f"loss: {loss.item():>7f}")
+                tqdm.write(f"loss: {loss.item():>7f}")
 
     def full_train(self, nepochs):
         for epoch in range(nepochs):
             print("########## Epoch " + str(epoch))
             self.train_loop()
+            if self.scheduler is not None:
+                self.scheduler.step()
     
     def save(self, path, **kwargs):
         torch.save({

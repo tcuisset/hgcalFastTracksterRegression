@@ -1,6 +1,6 @@
 import awkward as ak
 import torch
-from torch.utils.data import Sampler, StackDataset, TensorDataset, Dataset, DataLoader
+from torch.utils.data import Sampler, StackDataset, TensorDataset, Dataset, DataLoader, WeightedRandomSampler
 from dataclasses import dataclass
 from typing import Iterator
 
@@ -56,13 +56,18 @@ class TracksterInEventIdxDataset(Dataset):
     def __len__(self):
         return len(self.input.cp_energy)
     
-def makeDataLoader(regDataset:SelectedInputSample, **kwargs):
-    """ Create a dataloader from regression dataset. kwargs are passed to DataLoader constructor"""
+def makeDataLoader(regDataset:SelectedInputSample, weighted=False, **kwargs):
+    """ Create a dataloader from regression dataset. kwargs are passed to DataLoader constructor
+    weighted : if True, enable sampling weights with caloparticle energy
+    """
     def collate(batch):
         return {"features" : torch.cat([inp["features"] for inp in batch]), 
                 "tracksterInEvent_idx":torch.cat([torch.full(inp["tracksterInEvent_idx"].shape, i) for i, inp in enumerate(batch)]), # normalize indices to start at 0 (you should not shuffle the dataset !) 
                 "cp_energy":torch.stack([inp["cp_energy"][0] for inp in batch])} # not sure why [0] is needed
-    return DataLoader(regDataset.makeStackDataset(), collate_fn=collate, **kwargs)
+    sampler = None
+    if weighted:
+        sampler = WeightedRandomSampler(1./regDataset.cp_energy, len(regDataset.cp_energy), replacement=True)
+    return DataLoader(regDataset.makeStackDataset(), collate_fn=collate, sampler=sampler, **kwargs)
 
 
 
