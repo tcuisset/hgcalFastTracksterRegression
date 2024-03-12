@@ -16,14 +16,14 @@ class LinearModel(BasePredModel):
     def __init__(self, nfeat=10):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(nfeat, 1, dtype=torch.float64),
+            nn.Linear(nfeat, 1),
         )
 
 class LinearEnergyCellTypeOnlyModel(nn.Module):
     def __init__(self, nfeat=10):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(7, 1, dtype=torch.float64),
+            nn.Linear(7, 1),
         )
 
     def forward(self, x):
@@ -33,54 +33,54 @@ class BabyDNN(BasePredModel):
     def __init__(self, nfeat=10):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(nfeat, 3, dtype=torch.float64),
+            nn.Linear(nfeat, 3),
             nn.ReLU(),
-            nn.Linear(3, 1, dtype=torch.float64)
+            nn.Linear(3, 1)
         )
 
 class BasicDNN(BasePredModel):
     def __init__(self, nfeat=10):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(nfeat, 10, dtype=torch.float64),
+            nn.Linear(nfeat, 10),
             nn.ReLU(),
-            nn.Linear(10, 1, dtype=torch.float64),
+            nn.Linear(10, 1),
         )
 
 class MediumDNN(BasePredModel):
     def __init__(self, nfeat=10):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(nfeat, 20, dtype=torch.float64),
+            nn.Linear(nfeat, 20),
             nn.ReLU(),
-            nn.Linear(20, 20, dtype=torch.float64),
+            nn.Linear(20, 20),
             nn.ReLU(),
-            nn.Linear(20, 10, dtype=torch.float64),
+            nn.Linear(20, 10),
             nn.ReLU(),
-            nn.Linear(10, 1, dtype=torch.float64),
+            nn.Linear(10, 1),
         )
 
 class LargeDNN(BasePredModel):
     def __init__(self, nfeat=10):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(nfeat, 30, dtype=torch.float64),
+            nn.Linear(nfeat, 30),
             nn.ReLU(),
-            nn.Linear(30, 50, dtype=torch.float64),
+            nn.Linear(30, 50),
             nn.ReLU(),
-            nn.Linear(50, 50, dtype=torch.float64),
+            nn.Linear(50, 50),
             nn.ReLU(),
-            nn.Linear(50, 40, dtype=torch.float64),
+            nn.Linear(50, 40),
             nn.ReLU(),
-            nn.Linear(40, 30, dtype=torch.float64),
+            nn.Linear(40, 30),
             nn.ReLU(),
-            nn.Linear(30, 20, dtype=torch.float64),
+            nn.Linear(30, 20),
             nn.ReLU(),
-            nn.Linear(20, 10, dtype=torch.float64),
+            nn.Linear(20, 10),
             nn.ReLU(),
-            nn.Linear(10, 5, dtype=torch.float64),
+            nn.Linear(10, 5),
             nn.ReLU(),
-            nn.Linear(5, 1, dtype=torch.float64),
+            nn.Linear(5, 1),
         )
 
 
@@ -93,15 +93,32 @@ def loss_mse_basic(model, data_batch):
     return nn.functional.mse_loss(endcap_sum_predictions(model, data_batch), data_batch["cp_energy"])
 
 def loss_mse_basic_ratio(model, data_batch):
-    """ MSE of sumPredictions/CPenergy - 1"""
+    """ MSE of sumPredictions/CPenergy - 1
+    L = \sum_{events} \left(  \frac{\sum_{i \in \text{tracksters}} DNN(\text{features}_i)}{E_{\text{CaloParticle}}} -1\right )^2
+    """
     return nn.functional.mse_loss(endcap_sum_predictions(model, data_batch)/data_batch["cp_energy"], torch.ones_like(data_batch["cp_energy"]))
+
+def loss_mse_basic_ratio_constrained(model, data_batch, negative_regularization_coef=1., minFractionOfRawEnergy=0.9, minFractionOfRawEnergy_regCoeff=1.):
+    """ MSE of sumPredictions/CPenergy - 1 with constraints
+    L = \sum_{events} \left(  \frac{\sum_{i \in \text{tracksters}} DNN(\text{features}_i)}{E_{\text{CaloParticle}}} -1\right )^2
+    """
+    model_pred = model(data_batch["features"])
+    sum_model_pred = scatter_add(model_pred, data_batch["tracksterInEvent_idx"])
+    return (
+        nn.functional.mse_loss(sum_model_pred/data_batch["cp_energy"], torch.ones_like(data_batch["cp_energy"])) 
+        + negative_regularization_coef * nn.functional.relu(-model_pred).sum() # avoid negative energy prediction
+
+        # avoid energy prediction being too far lower than raw_energy
+        + minFractionOfRawEnergy_regCoeff* (nn.functional.relu(minFractionOfRawEnergy*data_batch["features"][:, 0] - model_pred)/data_batch["features"][:, 0]).sum()
+    )
+
 
 
 def getResultsFromModel_basicLoss(model:nn.Module, pred_batch:dict[str, torch.Tensor]) -> tuple[np.ndarray, np.ndarray]:
     """ Computes for the given model the energy prediction for each trackster as well as the sum of the energy predictions for the complete endcap """
     model_output_tensor = model(pred_batch["features"]).detach()
-    full_energy_pred = scatter_add(model_output_tensor, pred_batch["tracksterInEvent_idx"].detach()).numpy()
-    return model_output_tensor.numpy(), full_energy_pred
+    full_energy_pred = scatter_add(model_output_tensor, pred_batch["tracksterInEvent_idx"].detach()).cpu().numpy()
+    return model_output_tensor.cpu().numpy(), full_energy_pred
 
 
 def endcap_weightedSum_predictions(model, data_batch):

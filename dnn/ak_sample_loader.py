@@ -65,12 +65,14 @@ features = {
 
 
 class AkSampleLoader:
-    def __init__(self, pathToHisto:str|list[str], shouldSplitEndcaps=False, cp_min_energy=1, 
-                 tsArgs=dict(filter_name=["raw_energy", "raw_energy_perCellType", "barycenter_*", "EV*", "sigmaPCA*", "NClusters"]), 
+    def __init__(self, pathToHisto:str|list[str], shouldSplitEndcaps=False, cp_min_energy=1, filterCaloParticleCount=True, loadAssociations=False, sortTracksters=True,
+                 tsArgs=dict(filter_name=["raw_energy", "raw_energy_perCellType", "barycenter_*", "EV*", "sigmaPCA*", "vertices_z", "regressed_energy"]), 
                  cpArgs=dict(filter_name=["regressed_energy", "barycenter_*"])) -> None:
         """ pathToHisto : either single path, single path with wildcard, list of paths 
         shouldSplitEndcaps : if true, deals with 2 CaloParticle per event, one per each endcap. If False, only one CaloParticle per event
         cp_min_energy : remove caloparticles that have less than this energy
+        loadAssociations : if True, load the tsCLUE3D_simToReco_CP branch
+        sortTracksters : sort tracksters by decreasing energy
         """
         self.shouldSplitEndcaps = shouldSplitEndcaps
         self.cp_min_energy = cp_min_energy
@@ -84,14 +86,18 @@ class AkSampleLoader:
             self.tracksters = uproot.concatenate([f"{fileName}:ticlDumper/tracksters" for fileName in pathToHisto], **tsArgs, num_workers=5)
             self.caloparticles = uproot.concatenate([f"{fileName}:ticlDumper/simtrackstersCP" for fileName in pathToHisto], **cpArgs, num_workers=5)
         
-        self._filterBadEvents()
+        if filterCaloParticleCount:
+            self._filterBadEvents()
 
         maybeSplitEndcaps = splitEndcaps if shouldSplitEndcaps else lambda x:x
         self.tracksters_splitEndcaps = maybeSplitEndcaps(zipTracksters(self.tracksters))
-        self.tracksters_splitEndcaps = self.tracksters_splitEndcaps[ak.argsort(self.tracksters_splitEndcaps.raw_energy, ascending=False)]
+        if sortTracksters:
+            self.tracksters_splitEndcaps = self.tracksters_splitEndcaps[ak.argsort(self.tracksters_splitEndcaps.raw_energy, ascending=False)]
         self.caloparticles_splitEndcaps = maybeSplitEndcaps(zipTracksters(self.caloparticles, name="caloparticle"))[:, 0]
         self._filterBadEndcaps()
         self.energyPerCellType = ak.to_regular(self.tracksters_splitEndcaps.raw_energy_perCellType, axis=-1)
+        if loadAssociations:
+            self.assocs_simToReco_CP = uproot.concatenate([f"{fileName}:ticlDumper/associations" for fileName in pathToHisto], num_workers=5, filter_name="tsCLUE3D_simToReco_CP*")
 
     def _filterBadEvents(self):
         """ Remove events which don't have 1/2 caloparticles depending on splitEndcap """
@@ -147,10 +153,14 @@ class AkSampleLoader:
             return ak.concatenate([ak.unflatten(ar, counts=1, axis=-1) for ar in [self.tracksters_splitEndcaps.raw_energy, self.tracksters_splitEndcaps.barycenter_eta, self.tracksters_splitEndcaps.barycenter_z] + energyPerCellType_list], axis=-1)
         elif features_version == "feat-v2":
             return ak.concatenate(
-                [ak.unflatten(self.tracksters_splitEndcaps[branch_name], counts=1, axis=-1) for branch_name in ["raw_energy", "barycenter_eta", "barycenter_z", "EV1", "EV2", "EV3", "sigmaPCA1", "sigmaPCA2", "sigmaPCA3", "NClusters"]]
+                [ak.unflatten(self.tracksters_splitEndcaps[branch_name], counts=1, axis=-1) for branch_name in ["raw_energy", "barycenter_eta", "barycenter_z", "EV1", "EV2", "EV3", "sigmaPCA1", "sigmaPCA2", "sigmaPCA3"]]
+                + [ak.unflatten(ak.num(self.tracksters_splitEndcaps.vertices_z, axis=-1), counts=1, axis=-1)] # use count of vertices_z branch for number of LC in trackster
                 + [ak.unflatten(ar, counts=1, axis=-1) for ar in energyPerCellType_list]
             , axis=-1)
         
 
     def makeTracksterInEventIndex(self):
+        """ Make an array giving the for each trackster the event index
+        nevts * ntracksters * index """
         return ak.broadcast_arrays(ak.local_index(self.tracksters_splitEndcaps.raw_energy, axis=0), self.tracksters_splitEndcaps.raw_energy)[0]
+
