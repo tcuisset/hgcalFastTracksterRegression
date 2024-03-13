@@ -97,7 +97,9 @@ class AkSampleLoader:
         self._filterBadEndcaps()
         self.energyPerCellType = ak.to_regular(self.tracksters_splitEndcaps.raw_energy_perCellType, axis=-1)
         if loadAssociations:
+            assert not shouldSplitEndcaps
             self.assocs_simToReco_CP = uproot.concatenate([f"{fileName}:ticlDumper/associations" for fileName in pathToHisto], num_workers=5, filter_name="tsCLUE3D_simToReco_CP*")
+            self.assocs_simToReco_CP = self.assocs_simToReco_CP[(ak.num(self.tracksters_splitEndcaps.raw_energy) > 0) & (self.caloparticles_splitEndcaps.regressed_energy >= self.cp_min_energy)]
 
     def _filterBadEvents(self):
         """ Remove events which don't have 1/2 caloparticles depending on splitEndcap """
@@ -164,3 +166,13 @@ class AkSampleLoader:
         nevts * ntracksters * index """
         return ak.broadcast_arrays(ak.local_index(self.tracksters_splitEndcaps.raw_energy, axis=0), self.tracksters_splitEndcaps.raw_energy)[0]
 
+    def selectPUAssociated(self, assoc_score_threshold=0.8):
+        associatedTrackstersIndices = self.assocs_simToReco_CP.tsCLUE3D_simToReco_CP[self.assocs_simToReco_CP.tsCLUE3D_simToReco_CP_score < assoc_score_threshold][:, 0, :]
+        self.tracksters_splitEndcaps = self.tracksters_splitEndcaps[associatedTrackstersIndices]
+        self.energyPerCellType = self.energyPerCellType[associatedTrackstersIndices]
+
+        # filter to remove events having no assoc tracksters
+        good_events = (ak.num(self.tracksters_splitEndcaps.raw_energy) > 0)
+        self.tracksters_splitEndcaps = self.tracksters_splitEndcaps[good_events]
+        self.energyPerCellType = self.energyPerCellType[good_events]
+        self.caloparticles_splitEndcaps = self.caloparticles_splitEndcaps[good_events]

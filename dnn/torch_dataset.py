@@ -47,6 +47,12 @@ class RegressionDataset(Dataset):
             torch.tensor(ak.to_numpy(ak.sum(input.tracksters_splitEndcaps.raw_energy, axis=-1))),
             torch.tensor(ak.to_numpy(ak.sum(input.tracksters_splitEndcaps.regressed_energy, axis=-1)))
         ], dim=1)
+    
+    # def moveToDevice(self, device):
+    #     self.features_tensor = self.features_tensor.to(device)
+    #     self.tracksterInEvent_idx_tensor = self.tracksterInEvent_idx_tensor.to(device)
+    #     self.mapEventToTrackster_tensor = self.mapEventToTrackster_tensor.to(device)
+    #     self.cp_energy_tensor = self.cp_energy_tensor.to(device)
 
     def __getitem__(self, index):
         return {

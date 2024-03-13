@@ -42,7 +42,7 @@ datasets_PU = {energy : RegressionDataset(input, feature_version, device=device)
 loss_constrained_v1 = partial(loss_mse_basic_ratio_constrained, negative_regularization_coef=0.1, minFractionOfRawEnergy=0.9, minFractionOfRawEnergy_regCoeff=5.)
 
 
-l_model = FastDNNModule(loss_constrained_v1, getResultsFromModel_basicLoss, datasets_perEnergy, datasets_PU)
+l_model = FastDNNModule(loss_constrained_v1, getResultsFromModel_basicLoss, datasets_perEnergy, datasets_PU, model=ParametrizedDNN(17, 30, 5))
 
 trainer = L.Trainer(max_epochs=10,
                     logger=TensorBoardLogger("/grid_mnt/data_cms_upgrade/cuisset/ticlRegression/models/v11"), enable_progress_bar=True, devices=device_l,

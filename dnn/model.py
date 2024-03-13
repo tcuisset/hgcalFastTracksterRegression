@@ -2,6 +2,7 @@ from torch import nn
 import torch
 from torch_scatter import scatter_add
 import numpy as np
+from lightning.pytorch.core.mixins import HyperparametersMixin
 
 from dnn.ak_sample_loader import FEATURES_INDICES
 
@@ -82,6 +83,18 @@ class LargeDNN(BasePredModel):
             nn.ReLU(),
             nn.Linear(5, 1),
         )
+
+class ParametrizedDNN(BasePredModel, HyperparametersMixin):
+    def __init__(self, nfeat, hidden_size, num_layers):
+        super().__init__()
+        model_seq = [nn.Linear(nfeat, hidden_size), nn.ReLU()]
+        for i in range(num_layers):
+            model_seq.append(nn.Linear(hidden_size, hidden_size))
+            model_seq.append(nn.ReLU())
+        model_seq.append(nn.Linear(hidden_size, 1))
+        self.model = nn.Sequential(*model_seq)
+        self.save_hyperparameters()
+
 
 
 def endcap_sum_predictions(model, data_batch):

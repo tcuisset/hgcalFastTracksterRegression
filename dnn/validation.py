@@ -18,14 +18,16 @@ from dnn.fit import fitCruijff, cruijff
 from dnn.model import getResultsFromModel_basicLoss
 
 def createHists():
-    max_E, max_E_tot = 100, 800
+    max_E, max_E_tot = 800, 800
     max_ratio = 2.
-    bins = 200
+    bins = 400
+    bins_energy = 3000
+    bins_ratio = 200
 
     return dict( # hist.axis.Regular(bins, 0., 5., name="pred_over_reco", label="Trackster predicted energy / Trackster raw energy")
-        h_pred = hist.Hist(hist.axis.Regular(bins, 0., max_E, name="pred_energy", label="fastDNN Predicted trackster energy (GeV)")),
-        h_reco = hist.Hist(hist.axis.Regular(bins, 0., max_E, name="reco_energy", label="Trackster raw energy (GeV)")),
-        h_cnn = hist.Hist(hist.axis.Regular(bins, 0., max_E, name="cnn_energy", label="Trackster regressed energy (Kate CNN) (GeV)")),
+        h_pred = hist.Hist(hist.axis.Regular(bins_energy, 0., max_E, name="pred_energy", label="fastDNN Predicted trackster energy (GeV)")),
+        h_reco = hist.Hist(hist.axis.Regular(bins_energy, 0., max_E, name="reco_energy", label="Trackster raw energy (GeV)")),
+        h_cnn = hist.Hist(hist.axis.Regular(bins_energy, 0., max_E, name="cnn_energy", label="Trackster regressed energy (Kate CNN) (GeV)")),
         h_pred_vs_reco = hist.Hist(
             hist.axis.Regular(200, 0., max_E, name="reco_energy", label="Trackster raw energy (GeV)"),
             hist.axis.Regular(200, 0., max_E, name="pred_energy", label="Predicted trackster energy (GeV)"),
@@ -37,14 +39,14 @@ def createHists():
             hist.axis.Regular(bins, 0., max_E, name="cnn_energy", label="CNN Trackster regressed energy (Kate CNN) (GeV)"),
             name="pred_vs_reco_vs_cnn", label="Trackster predicted vs raw energy vs CNN energy (GeV)"),
 
-        h_reco_tot = hist.Hist(hist.axis.Regular(bins*3, 0., max_E_tot, name="reco_energy_tot", label="Total trackster raw energy (GeV)")),
-        h_pred_tot = hist.Hist(hist.axis.Regular(bins*3, 0., max_E_tot, name="pred_energy_tot", label="fastDNN energy for full endcap (GeV)")),
-        h_cnn_tot = hist.Hist(hist.axis.Regular(bins*3, 0., max_E_tot, name="cnn_energy_tot", label="CNN regressed energy for full endcap (GeV)")),
+        h_reco_tot = hist.Hist(hist.axis.Regular(bins_energy, 0., max_E_tot, name="reco_energy_tot", label="Total trackster raw energy (GeV)")),
+        h_pred_tot = hist.Hist(hist.axis.Regular(bins_energy, 0., max_E_tot, name="pred_energy_tot", label="fastDNN energy for full endcap (GeV)")),
+        h_cnn_tot = hist.Hist(hist.axis.Regular(bins_energy, 0., max_E_tot, name="cnn_energy_tot", label="CNN regressed energy for full endcap (GeV)")),
 
-        h_cp = hist.Hist(hist.axis.Regular(bins*3, 0., max_E_tot, name="cp_energy", label="CaloParticle (true) energy (GeV)")),
-        h_reco_tot_over_cp = hist.Hist(hist.axis.Regular(bins, 0., max_ratio, name="reco_tot_over_cp", label="Total trackster raw energy / CaloParticle energy")),
-        h_pred_tot_over_cp = hist.Hist(hist.axis.Regular(bins, 0., max_ratio, name="pred_tot_over_cp", label="Total trackster fastDNN energy / CaloParticle energy")),
-        h_cnn_tot_over_cp = hist.Hist(hist.axis.Regular(bins, 0., max_ratio, name="cnn_tot_over_cp", label="Total trackster CNN energy / CaloParticle energy"))
+        h_cp = hist.Hist(hist.axis.Regular(bins_energy, 0., max_E_tot, name="cp_energy", label="CaloParticle (true) energy (GeV)")),
+        h_reco_tot_over_cp = hist.Hist(hist.axis.Regular(bins_ratio, 0., max_ratio, name="reco_tot_over_cp", label="Total trackster raw energy / CaloParticle energy")),
+        h_pred_tot_over_cp = hist.Hist(hist.axis.Regular(bins_ratio, 0., max_ratio, name="pred_tot_over_cp", label="Total trackster fastDNN energy / CaloParticle energy")),
+        h_cnn_tot_over_cp = hist.Hist(hist.axis.Regular(bins_ratio, 0., max_ratio, name="cnn_tot_over_cp", label="Total trackster CNN energy / CaloParticle energy"))
     )
 
 def fillHists(hists:dict[str, hist.Hist], cp_energy:torch.Tensor, pred_trackster_energies:torch.Tensor, pred_full_energy:torch.Tensor, raw_energy:ak.Array, raw_full_energy:ak.Array, cnn_energy:ak.Array, cnn_full_energy:ak.Array):
@@ -98,7 +100,7 @@ def inferenceOnSavedModel(model_path:str|None, model:nn.Module, input:AkSampleLo
 
 def plotTracksterEnergies(hists):
     plt.figure(figsize=(9, 9))
-    hep.histplot([hists["h_reco"], hists["h_cnn"], hists["h_pred"]], label=["Raw trackster energy", "CNN trackster energy", "fastDNN trackster energy"])
+    hep.histplot([hists["h_reco"], hists["h_cnn"], hists["h_pred"]], label=["Raw energy", "CNN", "fastDNN"])
     plt.ylabel("Tracksters")
     plt.xlabel("Trackster energy (GeV)")
     plt.xlim(0, 50)
@@ -249,7 +251,7 @@ def doFullValidation_PU(pathToOutput:str, model:nn.Module, inputs_perEnergy:dict
 from typing import Literal
 from dnn.fit import fitCruijff, CruijffFitResult
 def plotResolution(fitRes:dict[str, dict[float, CruijffFitResult]], legendLabel:dict[str, str]=None, 
-              plotMode:Literal["sigmaOverMu", "sigma", "mu"]="sigmaOverMu", ratio:bool=False,
+              plotMode:Literal["sigmaOverMu", "sigma", "mu"]="sigmaOverMu",
               colors_datatype=['tab:blue', 'tab:red', 'tab:green', 'tab:purple'],
               errorbar_common_kwargs=dict(markeredgewidth=1.5, capsize=5, lw=1.5),
               errorbar_individual_kwargs=[ dict(fmt='.', markersize=10), dict(fmt='s', markersize=8, mfc='w'),dict(fmt='x', markersize=8)]):
@@ -286,7 +288,7 @@ def plotResolution(fitRes:dict[str, dict[float, CruijffFitResult]], legendLabel:
     if plotMode == "sigmaOverMu":
         main_ax.set_ylabel(r'$\frac{\hat{\sigma}}{\hat{\mu}}(\frac{\sum E_{trackster}}{E_{gen}})$')
     elif plotMode == "mu":
-        main_ax.set_ylabel(r'$\mu(E_{SC}/E_{GEN})$')
+        main_ax.set_ylabel(r'$\mu(\frac{\sum E_{trackster}}{E_{gen}})$')
     hep.cms.text("Preliminary", exp="TICLv5", ax=main_ax)
     # hep.cms.lumitext("PU=0", ax=main_ax)
     return fig

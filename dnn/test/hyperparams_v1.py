@@ -1,13 +1,4 @@
 """ Hyperapameter training - Training using v2 samples (skeleton) pions with weighted samples 1/cp_energy and saving all fixed energy validation + fix NClusters variable """
-
-from ray.train.lightning import (
-    RayDDPStrategy,
-    RayLightningEnvironment,
-    RayTrainReportCallback,
-    prepare_trainer,
-)
-
-
 import os
 import torch
 import matplotlib
@@ -41,7 +32,7 @@ input_test_perEnergy = {
  400: '/grid_mnt/data_cms_upgrade/cuisset/ticlRegression/PionSamples_v2/FixedEnergy_400.pkl',
  600 : '/grid_mnt/data_cms_upgrade/cuisset/ticlRegression/PionSamples_v2/FixedEnergy_600.pkl'}
 input_test_perEnergy = {energy : AkSampleLoader.loadFromPickle(inputFile) for energy, inputFile in input_test_perEnergy.items()}
-datasets_perEnergy = {energy : RegressionDataset(input, feature_version, device=device) for energy, input in input_test_perEnergy.items()}
+
 
 energies_PU = [10, 20, 50, 100, 200, 500]
 input_PU_perEnergy = {energy : AkSampleLoader.loadFromPickle(f"/grid_mnt/data_cms_upgrade/cuisset/ticlRegression/PionSamples_PU/v1/{energy}.pkl") for energy in energies_PU}
@@ -49,16 +40,33 @@ datasets_PU = {energy : RegressionDataset(input, feature_version, device=device)
 
 
 def train_fct(config):
-    loss_constrained_v1 = partial(loss_mse_basic_ratio_constrained, negative_regularization_coef=0.1, minFractionOfRawEnergy=0.9, minFractionOfRawEnergy_regCoeff=5.)
+    loss_constrained_v1 = partial(loss_mse_basic_ratio_constrained, negative_regularization_coef=config["negative_regularization_coef"], minFractionOfRawEnergy=config["minFractionOfRawEnergy"], minFractionOfRawEnergy_regCoeff=config["minFractionOfRawEnergy"])
 
-
-    l_model = FastDNNModule(loss_constrained_v1, getResultsFromModel_basicLoss, datasets_perEnergy, datasets_PU)
+    l_model = FastDNNModule(loss_constrained_v1, getResultsFromModel_basicLoss, datasets_perEnergy, datasets_PU, model=ParametrizedDNN(17, **{key[len("model."):]:val for key, val in config if key.startswith("model.")}), config=config)
 
     trainer = L.Trainer(max_epochs=10,
                         logger=TensorBoardLogger("/grid_mnt/data_cms_upgrade/cuisset/ticlRegression/models/v11"), enable_progress_bar=True, devices=device_l,
-                        callbacks=[L_c.EarlyStopping("validation_loss")])
-    trainer.fit(model=l_model, train_dataloaders=makeDataLoader(makeTrainingSample(input, feature_version, device=device),  weighted=True, batch_size=1000, num_workers=0),
+                        callbacks=[L_c.EarlyStopping("validation_loss")],)
+    trainer.fit(model=l_model, train_dataloaders=makeDataLoader(makeTrainingSample(input, feature_version, device=device),  weighted=True, batch_size=config["batch_size"], num_workers=0),
                 val_dataloaders=makeDataLoader(makeValidationSample(input, feature_version, device=device), batch_size=10000))
 
 
     trainer.test(model=l_model, dataloaders=[makeDataLoader(dataset, batch_size=10000) for dataset in datasets_perEnergy.values()] + [makeDataLoader(dataset, batch_size=10000) for dataset in datasets_PU.values()])
+
+    return trainer.callback_metrics["sigma_PU_sum"]
+
+import optuna
+study = optuna.create_study(direction="minimize")
+study.optimize(train_fct, n_trials=100, storage="sqlite:///grid_mnt/data_cms_upgrade/cuisset/ticlRegression/models/optuna/v1.db")
+
+print("Number of finished trials: {}".format(len(study.trials)))
+
+print("Best trial:")
+trial = study.best_trial
+
+print("  Value: {}".format(trial.value))
+
+print("  Params: ")
+for key, value in trial.params.items():
+    print("    {}: {}".format(key, value))
+

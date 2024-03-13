@@ -1,14 +1,19 @@
 from typing import Any, Mapping
 import torch
 import lightning as L
+import math
 
 import dnn.model as model
 from dnn.validation import *
 
 class FastDNNModule(L.LightningModule):
-    def __init__(self, loss_fn, getResultsFromModel_fct, fixedEnergies:dict[float, RegressionDataset], fixedEnergies_PU:dict[float, RegressionDataset]) -> None:
+    def __init__(self, loss_fn, getResultsFromModel_fct, fixedEnergies:dict[float, RegressionDataset], fixedEnergies_PU:dict[float, RegressionDataset],
+                 model, **kwargs) -> None:
         super().__init__()
-        self.model = model.LargeDNN(17)
+        self.model = model
+        self.save_hyperparameters(model.hparams | kwargs)
+        print(model.hparams | kwargs)
+        print(self.hparams)
         self.loss_fn = loss_fn
         self.getResultsFromModel_fct = getResultsFromModel_fct
         self.fixedEnergies = fixedEnergies
@@ -32,7 +37,7 @@ class FastDNNModule(L.LightningModule):
         return loss
     
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.model.parameters())
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.hparams["lr"])
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
@@ -66,7 +71,7 @@ class FastDNNModule(L.LightningModule):
         fitRes_CNN = {}
         fitRes_raw = {}
         for energy, hists in self.hists_fixedEnergy.items():
-            with open(Path(self.logger.log_dir) / f"hists_{energy}", "wb") as f:
+            with open(Path(self.logger.log_dir) / f"hists_{energy}.pkl", "wb") as f:
                 pickle.dump(hists, f)
             
             def tryFit(var, h_name):
@@ -80,22 +85,27 @@ class FastDNNModule(L.LightningModule):
             for plotFct in plotsToSave:
                 plotFct(hists)
                 plt.savefig(Path(self.logger.log_dir) / (f"plot_{energy}." + plotFct.__name__ + ".png"))
-                self.logger.experiment.add_figure(f"Testing_0PU/{energy}_{plotFct.__name__}", plt.gcf(), self.trainer.current_epoch)
+                self.logger.experiment.add_figure(f"Testing_{plotFct.__name__}/{energy}_0PU", plt.gcf(), self.trainer.current_epoch)
                 plt.close()
         
-        self.logger.experiment.add_figure("Testing_0PU/resolution", plotResolution({"raw":fitRes_raw, "cnn":fitRes_CNN, "pred":fitRes}, legendLabel=dict(raw="Raw energy", cnn="CNN", pred="fastDNN")), self.trainer.current_epoch)
+        self.logger.experiment.add_figure("Resolution/sigmaOverMu_0PU",
+            plotResolution({"raw":fitRes_raw, "cnn":fitRes_CNN, "pred":fitRes}, legendLabel=dict(raw="Raw energy", cnn="CNN", pred="fastDNN"), plotMode="sigmaOverMu"), self.trainer.current_epoch)
+        self.logger.experiment.add_figure("Resolution/mu_0PU",
+            plotResolution({"raw":fitRes_raw, "cnn":fitRes_CNN, "pred":fitRes}, legendLabel=dict(raw="Raw energy", cnn="CNN", pred="fastDNN"), plotMode="mu"), self.trainer.current_epoch)
         
         fitRes_PU = {}
         fitRes_CNN_PU = {}
         fitRes_raw_PU = {}
+        failedFit = False
         for energy, hists in self.hists_fixedEnergy_PU.items():
-            with open(Path(self.logger.log_dir) / f"hists_{energy}_PU", "wb") as f:
+            with open(Path(self.logger.log_dir) / f"hists_{energy}_PU.pkl", "wb") as f:
                 pickle.dump(hists, f)
             
             def tryFit(var, h_name):
                 try:
                     var[energy] = fitCruijff(hists[h_name])
-                except: pass
+                except:
+                    failedFit = True
             tryFit(fitRes_PU, "h_pred_tot_over_cp")
             tryFit(fitRes_CNN_PU, "h_cnn_tot_over_cp")
             tryFit(fitRes_raw_PU, "h_reco_tot_over_cp")
@@ -103,13 +113,18 @@ class FastDNNModule(L.LightningModule):
             for plotFct in plotsToSave:
                 plotFct(hists)
                 plt.savefig(Path(self.logger.log_dir) / (f"plot_{energy}_PU." + plotFct.__name__ + ".png"))
-                self.logger.experiment.add_figure(f"Testing_200PU/{energy}_{plotFct.__name__}", plt.gcf(), self.trainer.current_epoch)
+                self.logger.experiment.add_figure(f"Testing_{plotFct.__name__}/{energy}_200PU", plt.gcf(), self.trainer.current_epoch)
                 plt.close()
         
-        self.logger.experiment.add_figure("Testing_200PU/resolution", plotResolution({"raw":fitRes_raw, "cnn":fitRes_CNN, "pred":fitRes}, legendLabel=dict(raw="Raw energy", cnn="CNN", pred="fastDNN")), self.trainer.current_epoch)
+        self.logger.experiment.add_figure("Resolution/sigmaOverMu_200PU", 
+            plotResolution({"raw":fitRes_raw_PU, "cnn":fitRes_CNN_PU, "pred":fitRes_PU}, legendLabel=dict(raw="Raw energy", cnn="CNN", pred="fastDNN"), plotMode="sigmaOverMu"), self.trainer.current_epoch)
+        self.logger.experiment.add_figure("Resolution/mu_200PU",
+            plotResolution({"raw":fitRes_raw_PU, "cnn":fitRes_CNN_PU, "pred":fitRes_PU}, legendLabel=dict(raw="Raw energy", cnn="CNN", pred="fastDNN"), plotMode="mu"), self.trainer.current_epoch)
 
-        # self.logger.log_hyperparams(self.hparams, {
-
-        # })
+        self.logger.log_hyperparams(self.hparams, {
+            f"sigma_PU_{energy}" : fitRes.params.sigmaAverage for energy, fitRes in fitRes_PU.items()
+        } | {
+            "sigma_PU_sum" : sum([fitRes.params.sigmaAverage for energy, fitRes in fitRes_PU.items()]) + (math.inf if failedFit else 0.)
+        })
 
 
