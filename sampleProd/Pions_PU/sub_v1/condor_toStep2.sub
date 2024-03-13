@@ -1,0 +1,46 @@
+
+# Parameters (need absolute paths)
+ConfigPath = /grid_mnt/vol_home/llr/cms/cuisset/hgcal/ticlRegression/sampleProd/Pions_PU/sub_v1
+Version = v1
+Energy = 100
+
+executable = $(ConfigPath)/condor_toStep2.sh
+transfer_input_files = $(ConfigPath)/SinglePi_Pt10.py, $(ConfigPath)/step2.py
+environment = "INDEX=$(SampleId) VERSION=$(Version) ENERGY=$(Energy)"
+universe = vanilla
+output = logs-step2/$(Energy)_$(SampleId).out
+error = logs-step2/$(Energy)_$(SampleId).err
+log = logs-step2/$(Energy)_$(SampleId).log
+transfer_output_files = ""
+
+request_memory = 20G
+# can only be 1 or 8 on LLR T3
+request_cpus = 8
+
+T3Queue = $(T3Queue:short)
+WNTag = $(WNTag:el7)
+include : /opt/exp_soft/cms/t3/t3queue |
+
+Start = 6
+Stop = 20
+
+Energy = 10
+queue SampleId from seq $(Start) $(Stop) |
+
+Energy = 20
+queue SampleId from seq $(Start) $(Stop) |
+
+Energy = 50
+queue SampleId from seq $(Start) $(Stop) |
+
+Energy = 100
+queue SampleId from seq $(Start) $(Stop) |
+
+Energy = 200
+queue SampleId from seq $(Start) $(Stop) |
+
+Energy = 500
+queue SampleId from seq $(Start) $(Stop) |
+
+Energy = 600
+queue SampleId from seq 1 20 |
